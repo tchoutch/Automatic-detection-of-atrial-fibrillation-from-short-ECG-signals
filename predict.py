@@ -47,7 +47,7 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
 
     model = pickle.load(open(model_name, 'rb')) # Lade  Model
     detectors = Detectors(fs)        # Initialisierung des QRS-Detektors
-    
+
     predictions = list()
     X_test = list()
 
@@ -55,7 +55,7 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
         r_peaks = detectors.hamilton_detector(ecg_lead)     # Detektion der QRS-Komplexe
         sdnn = np.std(np.diff(r_peaks)/fs*1000) 
         X_test.append(sdnn)
-    X_test = np.array(X_test)
+    X_test = np.array(X_test).reshpae((-1,1))
     result = model.predict(X_test)
     for idx,ecg_lead in enumerate(ecg_leads):
         if result[idx] == 1:
