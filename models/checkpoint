@@ -1,0 +1,2 @@
+model_checkpoint_path: "LSTM_Binary_50epochs_128batchsize_08-07-2022 05:16:12"
+all_model_checkpoint_paths: "LSTM_Binary_50epochs_128batchsize_08-07-2022 05:16:12"

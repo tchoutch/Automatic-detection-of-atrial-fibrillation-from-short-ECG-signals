@@ -15,9 +15,10 @@ from ecgdetectors import Detectors
 import os
 from typing import List, Tuple
 import pickle
+from train import preprocessData, CNNModel,LSTMModel, Classification,Model
 
 ###Signatur der Methode (Parameter und Anzahl return-Werte) darf nicht verändert werden
-def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[str], model_name : str='model.npy',is_binary_classifier : bool=False) -> List[Tuple[str,str]]:
+def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[str], model_name : str='CNN_v1',is_binary_classifier : bool=False) -> List[Tuple[str,str]]:
     '''
     Parameters
     ----------
@@ -41,33 +42,45 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
     '''
 
 #------------------------------------------------------------------------------
-# Euer Code ab hier  
-    #with open(model_name, 'rb') as f:  
-    #    th_opt = np.load(f)         # Lade simples Model (1 Parameter)
-
-    model = pickle.load(open(model_name, 'rb')) # Lade  Model
-    detectors = Detectors(fs)        # Initialisierung des QRS-Detektors
-    
-    predictions = list()
-    X_test = list()
-
-    for idx,ecg_lead in enumerate(ecg_leads):
-        r_peaks = detectors.hamilton_detector(ecg_lead)     # Detektion der QRS-Komplexe
-        sdnn = np.std(np.diff(r_peaks)/fs*1000) 
-        X_test.append(sdnn)
-    X_test = np.array(X_test)
-    result = model.predict(X_test)
-    for idx,ecg_lead in enumerate(ecg_leads):
-        if result[idx] == 1:
-            predictions.append((ecg_names[idx], 'N'))
-        elif result[idx] == 0:
-            predictions.append((ecg_names[idx], 'A'))
-        if ((idx+1) % 100)==0:
-            print(str(idx+1) + "\t Dateien wurden verarbeitet.")
-                
-            
+    predictions=[(ecg_names[i], 'N') for i in range(0, len(ecg_names))] 
+    if model_name=="CNN_v1":
+        if is_binary_classifier:
+            pd= preprocessData(Classification.BINARY,train=False)
+            pd.readTestData(ecg_leads)
+            spectograms,dimension = pd.generateSpectograms(pd.data)
+            model = CNNModel(dimension,Classification.BINARY)           
+            path = 'models\CNN_Binary_V1'
+        else:
+            pd= preprocessData(Classification.MULTICLASS,train=False)
+            pd.readTestData(ecg_leads)
+            spectograms,dimension = pd.generateSpectograms(pd.data)
+            model = CNNModel(dimension,Classification.MULTICLASS)           
+            path = 'models\CNN_Multiclass_V1'
+        model_loaded = model.loadModel(path)
+        y_pred = model_loaded.predict(spectograms.reshape((-1,  *dimension)), batch_size=128)
+        class_pred = model.predictitionToClass(y_pred)  
+        labels_pred = model.classIdxToLabels(class_pred,pd.classes)
+        predictions= model.formatPrediction(labels_pred,ecg_names)
+    elif model_name == "LSTM_v1":
+        scaler= pickle.load(open('scaler/scaler.pkl', 'rb'))
+        if is_binary_classifier:
+            pd= preprocessData(Classification.BINARY,train=False)
+            pd = preprocessData(train=False)
+            pd.readTestData(ecg_leads)
+            signals = pd.resizeData()
+            model = LSTMModel(Classification.BINARY)           
+            path = 'models\LSTM_Binary_V1'
+        else:
+            pd= preprocessData(Classification.MULTICLASS,train=False)
+            pd = preprocessData(train=False)
+            pd.readTestData(ecg_leads)
+            signals = pd.resizeData()
+            model = LSTMModel(Classification.MULTICLASS)           
+            path = 'models\LSTM_Multiclass_V1'
+        model_loaded = model.loadModel(path)
+        y_pred = model_loaded.predict(scaler.transform(signals), batch_size=128)
+        class_pred = model.predictitionToClass(y_pred)  
+        labels_pred = model.classIdxToLabels(class_pred,pd.classes)
+        predictions= model.formatPrediction(labels_pred,ecg_names)
 #------------------------------------------------------------------------------    
     return predictions # Liste von Tupels im Format (ecg_name,label) - Muss unverändert bleiben!
-                               
-                               
-        
