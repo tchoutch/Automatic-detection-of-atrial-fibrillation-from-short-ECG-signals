@@ -3,10 +3,13 @@
 
 import csv
 import argparse
+from xmlrpc.client import boolean
 import scipy.io as sio
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import os
+import sys
 from ecgdetectors import Detectors
 
 import tensorflow as tf
@@ -20,7 +23,8 @@ from keras.callbacks import EarlyStopping
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score
+from sklearn.model_selection import KFold
 import imblearn
 
 from pandas import read_csv
@@ -55,7 +59,7 @@ class Classification(Enum):
   BINARY = 0
   MULTICLASS = 1
 
-class Model(Enum):
+class ModelType(Enum):
   LSTM = 0
   CNN = 1
 
@@ -124,8 +128,10 @@ class preprocessData:
       d[k]=np.count_nonzero(singals_types == v)
     return d
   
-  def filterData(self,signal_length = 9000):
-    return np.array([a for a in[(a[0][:signal_length],a[1]) for a in self.data] if len(a[0])==signal_length])
+  def filterData(self,data=None,signal_length = 9000):
+    data = self.data if data is None else data
+    return np.array([a for a in[(a[0][:signal_length],a[1]) for a in data] if len(a[0])==signal_length])
+
   def __getXY(self,data=None):
     if data is None:
       data=self.data
@@ -155,14 +161,14 @@ class preprocessData:
       steps = [('o', over), ('u', under)]
       pipeline = Pipeline(steps=steps)
       X, y = pipeline.fit_resample(X, y)
-    return X,y
+    return (X,y) , X.shape[1]
 
-  def splitData(self,data,test_size=0.2):
+  def splitData(self,data,test_size=0.2,random_state = 111):
     if not isinstance(data,tuple):
        X,y = self.__getXY(data)
     else:
       X,y = data
-    return train_test_split(X,y,test_size=test_size)
+    return train_test_split(X,y,test_size=test_size,random_state = random_state)
 
   def scaleData(self,X_train,X_test):
     scaler = MinMaxScaler()
@@ -187,9 +193,9 @@ class preprocessData:
       signal= signal.tolist()
     return  signal + [0.] * (length-len(signal))
 
-  def resizeData(self,data=None):
+  def resizeData(self,data=None,length=18000):
     data = self.data if data is None else data
-    return np.array([self.__resizeSignal(a) for a in data])
+    return np.array([(self.__resizeSignal(a[0],length),a[1]) for a in data])
 
   def resizeAndScale(self,scaler,data=None):
     resized_data=self.resizeData(data)
@@ -215,7 +221,11 @@ class preprocessData:
 
   def __extend_ts(self,ts, length):
     extended = np.zeros(length)
-    siglength = np.min([length, ts.shape[0]])
+    if isinstance(ts,list):
+      l=len(ts)
+    else:
+      l=ts.shape[0]
+    siglength = np.min([length, l]) # ,ts.shape[0]
     extended[:siglength] = ts[:siglength]
     return extended 
 
@@ -226,6 +236,14 @@ class preprocessData:
     #print(extend_all.shape)
     #print(self.data[:,0].shape)
     return extend_all, data[:,1].reshape(-1,1).astype('float')
+
+  def extendTestData(self,data=None,length=18000):
+    if data is None:
+      data=self.data
+    extend_all = np.array([self.__extend_ts(signal, length) for signal in data.tolist()])
+    #print(extend_all.shape)
+    #print(self.data[:,0].shape)
+    return extend_all
   
   def __spectrogram(self,data, nperseg=64, noverlap=32, log_spectrogram = False):
     fs = 300
@@ -319,14 +337,50 @@ class preprocessData:
     plt.imshow(spectograms[0,:,:].transpose(), cmap = 'jet', aspect = 'auto')
 
 
-class LSTMModel():
-  def __init__(self,classification_type = Classification.MULTICLASS):
-    self.model = Sequential()
-    self.classification_type = classification_type
-    self.__buildModel()
+class Model:
+    def __init__(self,input_shape,classification_type = Classification.MULTICLASS, test = True):
+      self.model = Sequential()
+      self.classification_type = classification_type
+      self.input_shape = input_shape
+      self.test = test
 
-  def __buildModel(self):
-      self.model.add(LSTM(32, return_sequences=True, input_shape=(9000,1)))
+    def train(self,X_train : np.ndarray ,X_test : np.ndarray,y_train : np.ndarray,y_test : np.ndarray, epochs : int, batch_size : int, verbose : int, shuffle : bool) -> tf.keras.callbacks.History:
+        """Train the model"""
+        pass
+    
+    def predict(self,data,batch_size):
+      return self.model.predict(data,batch_size)
+
+    def predictitionToClass(self,y_pred,threshhold=0.5):
+      if self.classification_type == Classification.MULTICLASS:
+        return np.argmax(y_pred, axis=1)
+      return self.__roundit(y_pred,threshhold)
+
+    def classIdxToLabels(self,class_pred,classes):
+      return np.vectorize(dict((v,k) for k,v in classes.items()).get)(class_pred)  
+  
+    def formatPrediction(self,labels_pred,ecg_names):
+      return [(ecg_names[i], labels_pred[i]) for i in range(0, len(ecg_names))] 
+
+    def loadModel(self,checkpoint_path):
+      self.model.reset_states()
+      self.model.load_weights(checkpoint_path)
+      loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()
+      metrics=['accuracy']
+      self.model.compile(loss=loss, optimizer='adam', metrics=metrics)
+      return self.model
+    
+    def __roundit (self,list,threshhold=0.5):
+      #list[np.isnan(list)] = 0
+      return np.array([1. if a>threshhold else 0. for a in list])
+
+class LSTMModel(Model):
+  def __init__(self,dimension,classification_type = Classification.MULTICLASS,test=True):
+    super().__init__(dimension,classification_type,test)
+    self.__buildModel(dimension,test)
+
+  def __buildModel(self,dimension,test=False):
+      self.model.add(LSTM(32, return_sequences=True, input_shape=((dimension,1))))
       self.model.add(LSTM(16, return_sequences=True))
       self.model.add(LSTM(4, return_sequences=True))
       self.model.add(Flatten())
@@ -336,16 +390,19 @@ class LSTMModel():
         self.model.add(Dense(4, activation='softmax'))
       else:
         self.model.add(Dense(1, activation='sigmoid'))
-      self.model.summary()
+      if not test: 
+        self.model.summary()
 
   def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 1,shuffle=True):
     model_name= self.__generateName(epochs,batch_size)
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=5)
     callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=1, monitor='val_accuracy',mode='max',save_best_only=True)
+    log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()
     metrics=['accuracy']
     self.model.compile(loss=loss, optimizer='adam', metrics=metrics)
-    history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,shuffle=shuffle, verbose=verbose, validation_data=(X_test,y_test),callbacks=[callback,es])
+    history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,shuffle=shuffle, verbose=verbose, validation_data=(X_test,y_test),callbacks=[callback,es,tensorboard_callback])
     self.model.save_weights("models/"+model_name)
     return history
 
@@ -371,31 +428,14 @@ class LSTMModel():
     else:
       model_name = f"LSTM_Binary_{epochs}epochs_{batch_size}batchsize_"+dt_string
     return model_name
-  
-  def predict(self,data,batch_size):
-    return self.model.predict(data,batch_size)
 
-  def predictitionToClass(self,y_pred,threshhold=0.5):
-    if self.classification_type == Classification.MULTICLASS:
-      return np.argmax(y_pred, axis=1)
-    return self.__roundit(y_pred,threshhold)
 
-  def classIdxToLabels(self,class_pred,classes):
-    return np.vectorize(dict((v,k) for k,v in classes.items()).get)(class_pred)  
-  
-  def formatPrediction(self,labels_pred,ecg_names):
-    return [(ecg_names[i], labels_pred[i]) for i in range(0, len(ecg_names))] 
+class CNNModel(Model):
+  def __init__(self,dimension,classification_type = Classification.MULTICLASS,test=True):
+    super().__init__(dimension,classification_type,test)
+    self.__buildModel(dimension,test)
 
-  def __roundit (self,list,threshhold=0.5):
-    return np.array([1. if a>threshhold else 0. for a in list])
-
-class CNNModel():
-  def __init__(self,dimension,classification_type = Classification.MULTICLASS):
-    self.model = Sequential()
-    self.classification_type = classification_type
-    self.__buildModel(dimension)
-
-  def __buildModel(self,dimension,n_blocks = 6):
+  def __buildModel(self,dimension,n_blocks = 6, test = False):
     filters_start = 32 # Number of convolutional filters
     layer_filters = filters_start # Start with these filters
     filters_growth = 32 # Filter increase after each convBlock
@@ -413,7 +453,7 @@ class CNNModel():
       else:
           provide_input = False
       
-      model = self.__conv2d_block(self.model, depth,
+      self.model = self.__conv2d_block(self.model, depth,
                           layer_filters,
                           filters_growth,
                           strides_start, strides_end,
@@ -422,25 +462,28 @@ class CNNModel():
       
       layer_filters += filters_growth
 
-    model.add(layers.Reshape((-1, 224))) #(batch, time steps, filters)
-    model.add(layers.core.Masking(mask_value = 0.0))
-    model.add(self.__MeanOverTime())
+    self.model.add(layers.Reshape((-1, 224))) #(batch, time steps, filters)
+    self.model.add(layers.core.Masking(mask_value = 0.0))
+    self.model.add(self.__MeanOverTime())
 
     # Ouutput layer
     if self.classification_type == Classification.MULTICLASS:
-      model.add(layers.Dense(4, activation='softmax', kernel_regularizer = regularizers.l2(0.1)))
+      self.model.add(layers.Dense(4, activation='softmax', kernel_regularizer = regularizers.l2(0.1)))
     else:
-      model.add(layers.Dense(1, activation='sigmoid'))
-    model.summary()
+      self.model.add(layers.Dense(1, activation='sigmoid'))
+    if not test: 
+      self.model.summary()
   
   def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 1,shuffle=True):
     model_name= self.__generateName(epochs,batch_size)
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=5)
     callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=1, monitor='val_accuracy',mode='max',save_best_only=True)
+    log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()
     metrics=['accuracy']
     self.model.compile(loss=loss, optimizer='adam', metrics=metrics)
-    history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,shuffle=shuffle, verbose=verbose, validation_data=(X_test,y_test),callbacks=[callback,es])
+    history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,shuffle=shuffle, verbose=verbose, validation_data=(X_test,y_test),callbacks=[callback,es,tensorboard_callback])
     #history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,shuffle=shuffle, verbose=verbose, validation_data=(X_test,y_test),callbacks=[callback])
     self.model.save_weights("models/"+model_name)
     return history
@@ -463,40 +506,30 @@ class CNNModel():
                   'kernel_initializer': 'glorot_normal'}
 
     for l in range(depth):
-
-        if first_layer:
-            self.model.add(layers.Conv2D(filters = layer_filters,
-                                    strides = strides_start,
-                                    input_shape = input_shape, **conv_parms))
-            first_layer = False
-        
+      if first_layer:
+        model.add(layers.Conv2D(filters = layer_filters,
+                                  strides = strides_start,
+                                  input_shape = input_shape, **conv_parms))
+        first_layer = False
+      
+      else:
+        if l == depth - 1:
+          layer_filters += filters_growth
+          model.add(layers.Conv2D(filters = layer_filters,
+                                      strides = strides_end, **conv_parms))
         else:
-            if l == depth - 1:
-                layer_filters += filters_growth
-                self.model.add(layers.Conv2D(filters = layer_filters,
-                                        strides = strides_end, **conv_parms))
-            else:
-                self.model.add(layers.Conv2D(filters = layer_filters,
-                                        strides = strides_start, **conv_parms))
-        
-        self.model.add(layers.BatchNormalization(center = True, scale = True))
-        self.model.add(layers.Activation('relu'))
-    
+          model.add(layers.Conv2D(filters = layer_filters,
+                                      strides = strides_start, **conv_parms))
+      
+      model.add(layers.BatchNormalization(center = True, scale = True))
+      model.add(layers.Activation('relu'))
+  
     return model
-
-  def loadModel(self,checkpoint_path):
-    self.model.reset_states()
-    self.model.load_weights(checkpoint_path)
-    loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()
-    metrics=['accuracy']
-    self.model.compile(loss=loss, optimizer='adam', metrics=metrics)
-    return self.model
 
   def __MeanOverTime(self):
     lam_layer = layers.Lambda(lambda x: K.mean(x, axis=1), output_shape=lambda s: (1, s[2]))
     return lam_layer
 
-  
   def __generateName(self,epochs=50,batch_size = 32):
     now = datetime.now()
     dt_string = now.strftime("%d-%m-%Y %H:%M:%S")
@@ -508,31 +541,14 @@ class CNNModel():
       model_name = f"CNN_Binary_{epochs}epochs_{batch_size}batchsize_"+dt_string
     return model_name
 
-  def predict(self,data,batch_size):
-    return self.model.predict(data,batch_size)
-
-  def predictitionToClass(self,y_pred,threshhold=0.5):
-    if self.classification_type == Classification.MULTICLASS:
-      return np.argmax(y_pred, axis=1)
-    return self.__roundit(y_pred,threshhold)
-
-  def classIdxToLabels(self,class_pred,classes):
-    return np.vectorize(dict((v,k) for k,v in classes.items()).get)(class_pred)  
-  
-  def formatPrediction(self,labels_pred,ecg_names):
-    return [(ecg_names[i], labels_pred[i]) for i in range(0, len(ecg_names))] 
-
-  def __roundit (self,list,threshhold=0.5):
-    return np.array([1. if a>threshhold else 0. for a in list])
-
 class Evaluation():
   def __init__(self,classification_type= Classification.MULTICLASS):
     self.classification_type=classification_type
   
   def computeF1(self,y_pred,y_true,average=None):
     if self.classification_type==Classification.MULTICLASS:
-      return f1_score(y_test, y_pred, average)
-    return f1_score(y_test, y_pred)
+      return f1_score(y_true, y_pred, average=average)
+    return f1_score(y_true, y_pred)
 
 if __name__ == '__main__':
   # Make False if Jupyter used
@@ -545,16 +561,18 @@ if __name__ == '__main__':
     parser.add_argument('--under',type=float,help='Undersampling rate')
     parser.add_argument('--batch', type=int, help='Batch size')
     parser.add_argument('--epochs', type=int, help='Epochs')
+    parser.add_argument('--extension', type=int, help='WITHOUT: 0, WITH:1')
     args = parser.parse_args()
-    model= Model.CNN if args.model else Model.LSTM
+    model= ModelType.CNN if args.model else ModelType.LSTM
     mode= Classification.MULTICLASS if args.mode else Classification.BINARY
     batch_size = 128 if args.batch is None else args.batch
     epochs = 50 if args.epochs is None else args.epochs
     strategy = Strategy.OVERUNDERSAMPLE if args.sampling else Strategy.OVERSAMPLE
     over_sampling_factor= 0.1 if args.over is None else args.over
     under_sampling_factor=0.5 if args.under is None else args.under
+    extension = False if args.extension is None else args.extension
   if False:
-    model = model.CNN
+    model = ModelType.CNN
     mode= Classification.MULTICLASS
     batch_size = 128
     epochs = 50
@@ -569,12 +587,15 @@ if __name__ == '__main__':
     #!pip install py-ecg-detectors
     #!sudo pip install imbalanced-learn
 
-  if model == Model.LSTM:
+  if model == ModelType.LSTM:
     pd = preprocessData(mode)
-    filtered_data = pd.filterData()
-    balanced_data = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
+    if extension:
+      filtered_data = pd.resizeData()
+    else:
+      filtered_data = pd.filterData()
+    balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
     X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
-    model = LSTMModel(mode)
+    model = LSTMModel(dimension,mode)
     history= model.train(X_train, X_test, y_train, y_test,epochs,batch_size)
     y_pred = model.predict(X_test, batch_size)
     class_pred = model.predictitionToClass(y_pred) 
@@ -593,4 +614,5 @@ if __name__ == '__main__':
     class_pred = model.predictitionToClass(y_pred) 
     ev = Evaluation(mode)
     print(ev.computeF1(class_pred,y_test))
+    print(ev.computeF1(class_pred,y_test,"micro"))
     print(ev.computeF1(class_pred,y_test,"macro"))
