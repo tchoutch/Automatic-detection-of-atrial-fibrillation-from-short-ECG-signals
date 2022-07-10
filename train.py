@@ -163,7 +163,7 @@ class preprocessData:
       X, y = pipeline.fit_resample(X, y)
     return (X,y) , X.shape[1]
 
-  def splitData(self,data,test_size=0.2,random_state = 111):
+  def splitData(self,data,test_size=0.2,random_state = 222): #111
     if not isinstance(data,tuple):
        X,y = self.__getXY(data)
     else:
@@ -393,10 +393,10 @@ class LSTMModel(Model):
       if not test: 
         self.model.summary()
 
-  def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 1,shuffle=True):
+  def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 2,shuffle=True):
     model_name= self.__generateName(epochs,batch_size)
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=5)
-    callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=1, monitor='val_accuracy',mode='max',save_best_only=True)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=verbose, patience=10)
+    callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=verbose, monitor='val_accuracy',mode='max',save_best_only=True)
     log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()
@@ -435,7 +435,7 @@ class CNNModel(Model):
     super().__init__(dimension,classification_type,test)
     self.__buildModel(dimension,test)
 
-  def __buildModel(self,dimension,n_blocks = 6, test = False):
+  def __buildModel(self,dimension,n_blocks = 6, test = True):
     filters_start = 32 # Number of convolutional filters
     layer_filters = filters_start # Start with these filters
     filters_growth = 32 # Filter increase after each convBlock
@@ -474,10 +474,10 @@ class CNNModel(Model):
     if not test: 
       self.model.summary()
   
-  def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 1,shuffle=True):
+  def train(self,X_train,X_test,y_train,y_test,epochs=50,batch_size = 128,verbose = 2,shuffle=True):
     model_name= self.__generateName(epochs,batch_size)
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=5)
-    callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=1, monitor='val_accuracy',mode='max',save_best_only=True)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=verbose, patience=10)
+    callback = tf.keras.callbacks.ModelCheckpoint(filepath="checkpoints/"+model_name,save_weights_only=True,verbose=verbose, monitor='val_accuracy',mode='max',save_best_only=True)
     log_dir = "logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     loss = tf.keras.losses.BinaryCrossentropy() if self.classification_type == Classification.BINARY else tf.keras.losses.SparseCategoricalCrossentropy()

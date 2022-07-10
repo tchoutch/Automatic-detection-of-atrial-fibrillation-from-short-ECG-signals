@@ -49,7 +49,7 @@ class Experiment():
     print ("WITHOUT EXTENSION" )
     dim = 9000
     pd = preprocessData(mode)
-    filtered_data = pd.filterData(dim)
+    filtered_data = pd.filterData(signal_length=dim)
     balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
     X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
     model = LSTMModel(dimension,mode)
@@ -87,7 +87,7 @@ class Experiment():
     print ("WITHOUT EXTENSION" )
     dim = 9000
     pd = preprocessData(mode)
-    filtered_data = pd.filterData(dim)
+    filtered_data = pd.filterData(signal_length=dim)
     balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
     X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
     model = LSTMModel(dimension,mode)
@@ -105,10 +105,36 @@ class Experiment():
     model= ModelType.CNN
     mode= Classification.MULTICLASS
     print ("PLAY WITH EXTENSION" )
+    for dim in [18000]: #6000,9000,12000,15000,
+        if dim==15000:
+            batch_size = 64
+        elif dim==18000:
+            batch_size = 4
+        pd_CNN = preprocessData(mode)
+        extended_data_CNN = pd_CNN.extendData(length = dim)
+        balanced_data_CNN, _ = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
+        spectograms,dimension = pd_CNN.generateSpectograms(balanced_data_CNN[0])
+        print(f"Dimension : {dimension}")
+        X_train, X_test, y_train, y_test = pd_CNN.splitData((spectograms,balanced_data_CNN[1]))
+        model = CNNModel(dimension,mode)
+        history = model.train(X_train.reshape((-1, *dimension)), X_test.reshape((len(y_test),*dimension)), y_train, y_test,epochs,batch_size)
+        y_pred = model.predict(X_test.reshape((-1, *dimension)), batch_size)
+        class_pred = model.predictitionToClass(y_pred) 
+        ev = Evaluation(mode)
+        print(f"Dimension = {dim}")
+        print(ev.computeF1(class_pred,y_test))
+        print(ev.computeF1(class_pred,y_test,"micro"))
+        print(ev.computeF1(class_pred,y_test,"macro"))
+    print("5. Experiment: FINISHED")
+
+    print ("6. Experiment: CNN - BINARY - OVERSAMPLING")
+    model= ModelType.CNN
+    mode= Classification.BINARY
+    print ("PLAY WITH EXTENSION" )
     for dim in [6000,9000,12000,15000,18000]:
       pd_CNN = preprocessData(mode)
       extended_data_CNN = pd_CNN.extendData(length = dim)
-      balanced_data_CNN = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor) #Strategy.OVERUNDERSAMPLE
+      balanced_data_CNN, _ = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
       spectograms,dimension = pd_CNN.generateSpectograms(balanced_data_CNN[0])
       X_train, X_test, y_train, y_test = pd_CNN.splitData((spectograms,balanced_data_CNN[1]))
       model = CNNModel(dimension,mode)
@@ -120,26 +146,6 @@ class Experiment():
       print(ev.computeF1(class_pred,y_test))
       print(ev.computeF1(class_pred,y_test,"micro"))
       print(ev.computeF1(class_pred,y_test,"macro"))
-    print("5. Experiment: FINISHED")
-    print ("6. Experiment: LSTM - MULTICLASS- OVERSAMPLING")
-    model= ModelType.CNN
-    mode= Classification.MULTICLASS
-    print ("WITHOUT EXTENSION" )
-    dim = 9000
-    pd_CNN = preprocessData(mode)
-    extended_data_CNN = pd_CNN.extendData(length = dim)
-    balanced_data_CNN = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor) #Strategy.OVERUNDERSAMPLE
-    spectograms,dimension = pd_CNN.generateSpectograms(balanced_data_CNN[0])
-    X_train, X_test, y_train, y_test = pd_CNN.splitData((spectograms,balanced_data_CNN[1]))
-    model = CNNModel(dimension,mode)
-    history = model.train(X_train.reshape((-1, *dimension)), X_test.reshape((len(y_test),*dimension)), y_train, y_test,epochs,batch_size)
-    y_pred = model.predict(X_test.reshape((-1, *dimension)), batch_size)
-    class_pred = model.predictitionToClass(y_pred) 
-    ev = Evaluation(mode)
-    print(f"Dimension = {dim}")
-    print(ev.computeF1(class_pred,y_test))
-    print(ev.computeF1(class_pred,y_test,"micro"))
-    print(ev.computeF1(class_pred,y_test,"macro"))
     print("6. Experiment: FINISHED")
 
     over_sampling_factor_list = [0.1,0.2,0.25,0.3]
@@ -175,7 +181,7 @@ class Experiment():
             print ("WITHOUT EXTENSION" )
             dim = 9000
             pd = preprocessData(mode)
-            filtered_data = pd.filterData(dim)
+            filtered_data = pd.filterData(signal_length=dim)
             balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
             X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
             model = LSTMModel(dimension,mode)
@@ -215,7 +221,7 @@ class Experiment():
             print ("WITHOUT EXTENSION" )
             dim = 9000
             pd = preprocessData(mode)
-            filtered_data = pd.filterData(dim)
+            filtered_data = pd.filterData(signal_length=dim)
             balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
             X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
             model = LSTMModel(dimension,mode)
@@ -250,26 +256,26 @@ class Experiment():
                 print(ev.computeF1(class_pred,y_test,"macro"))
             print("{i}. Experiment: FINISHED")
             i=i+1
-            print ("{i}. Experiment: LSTM - MULTICLASS- UNDEROVERSAMPLING")
+            print ("{i}. Experiment: CNN - BINARY - UNDEROVERSAMPLING")
             model= ModelType.CNN
-            mode= Classification.MULTICLASS
-            print ("WITHOUT EXTENSION" )
-            dim = 9000
-            pd_CNN = preprocessData(mode)
-            extended_data_CNN = pd_CNN.extendData(length = dim)
-            balanced_data_CNN = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor) #Strategy.OVERUNDERSAMPLE
-            spectograms,dimension = pd_CNN.generateSpectograms(balanced_data_CNN[0])
-            X_train, X_test, y_train, y_test = pd_CNN.splitData((spectograms,balanced_data_CNN[1]))
-            model = CNNModel(dimension,mode)
-            history = model.train(X_train.reshape((-1, *dimension)), X_test.reshape((len(y_test),*dimension)), y_train, y_test,epochs,batch_size)
-            y_pred = model.predict(X_test.reshape((-1, *dimension)), batch_size)
-            class_pred = model.predictitionToClass(y_pred) 
-            ev = Evaluation(mode)
-            print(f"Dimension = {dim}")
-            print(ev.computeF1(class_pred,y_test))
-            print(ev.computeF1(class_pred,y_test,"micro"))
-            print(ev.computeF1(class_pred,y_test,"macro"))
-            print("{i} Experiment: FINISHED")
+            mode= Classification.BINARY
+            print ("PLAY WITH EXTENSION" )
+            for dim in [6000,9000,12000,15000,18000]:
+                pd_CNN = preprocessData(mode)
+                extended_data_CNN = pd_CNN.extendData(length = dim)
+                balanced_data_CNN = pd_CNN.balanceData(extended_data_CNN,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor) #Strategy.OVERUNDERSAMPLE
+                spectograms,dimension = pd_CNN.generateSpectograms(balanced_data_CNN[0])
+                X_train, X_test, y_train, y_test = pd_CNN.splitData((spectograms,balanced_data_CNN[1]))
+                model = CNNModel(dimension,mode)
+                history = model.train(X_train.reshape((-1, *dimension)), X_test.reshape((len(y_test),*dimension)), y_train, y_test,epochs,batch_size)
+                y_pred = model.predict(X_test.reshape((-1, *dimension)), batch_size)
+                class_pred = model.predictitionToClass(y_pred) 
+                ev = Evaluation(mode)
+                print(f"Dimension = {dim}")
+                print(ev.computeF1(class_pred,y_test))
+                print(ev.computeF1(class_pred,y_test,"micro"))
+                print(ev.computeF1(class_pred,y_test,"macro"))
+            print("{i}. Experiment: FINISHED")
 
 
     f.close()
