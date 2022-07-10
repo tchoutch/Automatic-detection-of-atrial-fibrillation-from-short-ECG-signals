@@ -49,7 +49,7 @@ class Experiment():
     print ("WITHOUT EXTENSION" )
     dim = 9000
     pd = preprocessData(mode)
-    filtered_data = pd.filterData(dim)
+    filtered_data = pd.filterData(signal_length=dim)
     balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
     X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
     model = LSTMModel(dimension,mode)
@@ -87,7 +87,7 @@ class Experiment():
     print ("WITHOUT EXTENSION" )
     dim = 9000
     pd = preprocessData(mode)
-    filtered_data = pd.filterData(dim)
+    filtered_data = pd.filterData(signal_length=dim)
     balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
     X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
     model = LSTMModel(dimension,mode)
@@ -175,7 +175,7 @@ class Experiment():
             print ("WITHOUT EXTENSION" )
             dim = 9000
             pd = preprocessData(mode)
-            filtered_data = pd.filterData(dim)
+            filtered_data = pd.filterData(signal_length=dim)
             balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
             X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
             model = LSTMModel(dimension,mode)
@@ -215,7 +215,7 @@ class Experiment():
             print ("WITHOUT EXTENSION" )
             dim = 9000
             pd = preprocessData(mode)
-            filtered_data = pd.filterData(dim)
+            filtered_data = pd.filterData(signal_length=dim)
             balanced_data,dimension = pd.balanceData(filtered_data,strategy,over_sampling_factor=over_sampling_factor,under_sampling_factor=under_sampling_factor)
             X_train, X_test, y_train, y_test = pd.splitAndScaleData(balanced_data)
             model = LSTMModel(dimension,mode)
