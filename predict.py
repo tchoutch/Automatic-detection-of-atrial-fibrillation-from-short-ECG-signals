@@ -47,15 +47,17 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
         if is_binary_classifier:
             pd= preprocessData(Classification.BINARY,train=False)
             pd.readTestData(ecg_leads)
-            spectograms,dimension = pd.generateSpectograms(pd.data)
+            extended_data = pd.extendTestData()
+            spectograms,dimension = pd.generateSpectograms(extended_data)
             model = CNNModel(dimension,Classification.BINARY)           
-            path = 'models\CNN_Binary_V1'
+            path = 'models/CNN_Binary_V1'
         else:
             pd= preprocessData(Classification.MULTICLASS,train=False)
             pd.readTestData(ecg_leads)
-            spectograms,dimension = pd.generateSpectograms(pd.data)
+            extended_data = pd.extendTestData()
+            spectograms,dimension = pd.generateSpectograms(extended_data)
             model = CNNModel(dimension,Classification.MULTICLASS)           
-            path = 'models\CNN_Multiclass_V1'
+            path = 'models/CNN_Multiclass_V1'
         model_loaded = model.loadModel(path)
         y_pred = model_loaded.predict(spectograms.reshape((-1,  *dimension)), batch_size=128)
         class_pred = model.predictitionToClass(y_pred)  
@@ -63,20 +65,21 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
         predictions= model.formatPrediction(labels_pred,ecg_names)
     elif model_name == "LSTM_v1":
         scaler= pickle.load(open('scaler/scaler.pkl', 'rb'))
+        dimension = 9000
         if is_binary_classifier:
             pd= preprocessData(Classification.BINARY,train=False)
             pd = preprocessData(train=False)
             pd.readTestData(ecg_leads)
-            signals = pd.resizeData()
-            model = LSTMModel(Classification.BINARY)           
-            path = 'models\LSTM_Binary_V1'
+            signals = pd.extendTestData(length=dimension)
+            model = LSTMModel(dimension,Classification.BINARY)           
+            path = 'models/LSTM_Binary_V1'
         else:
             pd= preprocessData(Classification.MULTICLASS,train=False)
             pd = preprocessData(train=False)
             pd.readTestData(ecg_leads)
-            signals = pd.resizeData()
-            model = LSTMModel(Classification.MULTICLASS)           
-            path = 'models\LSTM_Multiclass_V1'
+            signals = pd.extendTestData(length=dimension)
+            model = LSTMModel(dimension,Classification.MULTICLASS)           
+            path = 'models/LSTM_Multiclass_V1'
         model_loaded = model.loadModel(path)
         y_pred = model_loaded.predict(scaler.transform(signals), batch_size=128)
         class_pred = model.predictitionToClass(y_pred)  
