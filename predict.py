@@ -85,5 +85,25 @@ def predict_labels(ecg_leads : List[np.ndarray], fs : float, ecg_names : List[st
         class_pred = model.predictitionToClass(y_pred)  
         labels_pred = model.classIdxToLabels(class_pred,pd.classes)
         predictions= model.formatPrediction(labels_pred,ecg_names)
+    elif model_name=="CNN_V2":
+        if is_binary_classifier:
+            pd= preprocessData(Classification.BINARY,train=False)
+            pd.readTestData(ecg_leads)
+            extended_data = pd.extendTestData(length=18000)
+            spectograms,dimension = pd.generateSpectograms(extended_data)
+            model = CNNModel(dimension,Classification.BINARY)           
+            path = 'models/CNN_Binary_V2'
+        else:
+            pd= preprocessData(Classification.MULTICLASS,train=False)
+            pd.readTestData(ecg_leads)
+            extended_data = pd.extendTestData(length=15000)
+            spectograms,dimension = pd.generateSpectograms(extended_data)
+            model = CNNModel(dimension,Classification.MULTICLASS)           
+            path = 'models/CNN_Multiclass_V2'
+        model_loaded = model.loadModel(path)
+        y_pred = model_loaded.predict(spectograms.reshape((-1,  *dimension)), batch_size=128)
+        class_pred = model.predictitionToClass(y_pred)  
+        labels_pred = model.classIdxToLabels(class_pred,pd.classes)
+        predictions= model.formatPrediction(labels_pred,ecg_names)
 #------------------------------------------------------------------------------    
     return predictions # Liste von Tupels im Format (ecg_name,label) - Muss unverändert bleiben!
