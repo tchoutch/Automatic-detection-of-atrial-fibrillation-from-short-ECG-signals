@@ -18,7 +18,7 @@ class Test():
     def make_test_dir(self,name):
         if not os.path.exists("Tests"):
             os.mkdir("Tests")
-        parent_dir = "Tests/" 
+        parent_dir = "Tests" 
         path = os.path.join(parent_dir, name) 
         os.mkdir(path)
         return path
